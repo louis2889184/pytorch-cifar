@@ -31,6 +31,7 @@ parser.add_argument('--merge_steps', default=10, type=int)
 parser.add_argument('--recalculate_interval', default=10, type=int)
 parser.add_argument('--split', default=2, type=int)
 parser.add_argument('--diff_aggr_method', default="sum", type=str)
+parser.add_argument('--warmup_epoch', default=0, type=int)
 
 args = parser.parse_args()
 
@@ -224,7 +225,30 @@ if device == 'cuda':
 
 merged_model = net
 
-merged_trainer = Trainer(args, merged_model, None, trainset, testset)
+
+warmup_accs = []
+
+if args.warmup_epoch > 0:
+    warmup_args = deepcopy(args)
+    warmup_args.max_epoch = args.warmup_epoch
+    warmup_args.update_mask_epochs = 100000000000
+    args.max_epoch = args.max_epoch - args.warmup_epoch
+
+    merged_trainer = Trainer(warmup_args, merged_model, None, trainset, testset)
+
+    for epoch in range(warmup_args.max_epoch):
+        job = merged_trainer.train(epoch)
+
+        for _ in job:
+            # training
+            pass
+
+        warmup_accs.append(merged_trainer.test(epoch))
+
+else:
+    merged_trainer = Trainer(args, merged_model, None, trainset, testset)
+
+print(warmup_accs)
 
 masks = create_mask_gradient_list(
     merged_model, 
@@ -243,7 +267,7 @@ for i in range(args.split):
     trainers.append(trainer)
 
 train_accs = []
-test_accs = []
+test_accs = warmup_accs
 
 step = 1
 

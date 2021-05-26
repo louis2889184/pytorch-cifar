@@ -26,6 +26,8 @@ parser.add_argument('--num_samples', default=1024, type=int)
 parser.add_argument('--update_mask_epochs', default=500, type=int)
 parser.add_argument('--save_file', default="default_accs.bin", type=str)
 parser.add_argument('--max_epoch', default=200, type=int)
+parser.add_argument('--pretrain_epoch', default=0, type=int)
+parser.add_argument('--sparsity', default=0.005, type=float)
 
 args = parser.parse_args()
 
@@ -113,9 +115,9 @@ def train(epoch):
 
     global mask
     
-    if epoch % args.update_mask_epochs == 0:
+    if (epoch % args.update_mask_epochs == 0 and epoch >= args.pretrain_epoch) or epoch == args.pretrain_epoch:
         print("update mask...")
-        mask = create_mask_gradient(net, trainset, args.num_samples, 0.005, sample_type, grad_type)
+        mask = create_mask_gradient(net, trainset, args.num_samples, args.sparsity, sample_type, grad_type)
 
     
     for batch_idx, (inputs, targets) in enumerate(trainloader):
@@ -125,10 +127,11 @@ def train(epoch):
         loss = criterion(outputs, targets)
         loss.backward()
 
-        for name, params in net.named_parameters():
-            mask[name] = mask[name].to(device)
+        if epoch >= args.pretrain_epoch:
+            for name, params in net.named_parameters():
+                mask[name] = mask[name].to(device)
 
-            params.grad.data.copy_(params.grad.data * mask[name].data)
+                params.grad.data.copy_(params.grad.data * mask[name].data)
 
         optimizer.step()
 
